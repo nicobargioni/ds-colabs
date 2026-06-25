@@ -28,7 +28,15 @@ _P = {
         obj="detectar observaciones atípicas (no supervisado) y visualizarlas",
         hip="una fracción pequeña de registros se aparta del patrón general",
         sub="Detección de anomalías con Isolation Forest y visualización en el espacio PCA."),
+    "nlp": dict(tec="TF-IDF + LogReg/LinearSVC", met="F1-macro",
+        obj="clasificar el texto en sus categorías ({tgt})",
+        hip="un baseline de TF-IDF + modelo lineal alcanza una performance fuerte",
+        sub="Clasificación de texto: EDA de texto, TF-IDF y modelos lineales (sin leakage)."),
 }
+
+_TIT = {"clasificacion": "Clasificación con {n}", "regresion": "Regresión sobre {n}",
+        "deep": "Red neuronal sobre {n}", "clustering": "Segmentación de {n}",
+        "anomalia": "Detección de anomalías en {n}", "nlp": "Clasificación de texto · {n}"}
 
 
 def make(category: str, sub_slug: str, sub_name: str, idx: int, dskey: str, problema: str) -> dict:
@@ -37,7 +45,7 @@ def make(category: str, sub_slug: str, sub_name: str, idx: int, dskey: str, prob
     tgt = d.get("target", "")
     unsup = problema in ("clustering", "anomalia")
     loader = unsup_loader(dskey) if unsup else d["loader"]
-    titulo = f"{d['name']}: {sub_name}"
+    titulo = _TIT[problema].format(n=d["name"])
     return {
         "categoria": category,
         "subtema": sub_name,
@@ -96,4 +104,47 @@ ASSIGN_DATA_ML = {
     ("deep-learning", "Deep Learning (CNNs)"): [
         ("digits", "deep"), ("cancer", "deep"), ("diabetes", "deep"),
         ("wine", "deep"), ("penguins", "deep")],
+}
+
+# ── IA & Agentes (subtemas NLP que mapean a clasificación de texto) ────────
+CAT_IA = "IA aplicada & Agentes"
+_NLP5 = lambda: [("news_tech", "nlp"), ("news_sci", "nlp"), ("news_rec", "nlp"),
+                 ("news_talk", "nlp"), ("sms", "nlp")]
+ASSIGN_IA = {
+    ("llms-prompting", "LLMs & Prompt Engineering"): _NLP5(),
+    ("rag-embeddings", "RAG & embeddings"): _NLP5(),
+    ("agentes", "Agentes de IA"): _NLP5(),
+    ("procesamiento-habla", "Procesamiento del habla"): _NLP5(),
+}
+
+# ── Hiperautomatización (repurposado a DS/ML/NLP) ──────────────────────────
+CAT_HIPER = "Hiperautomatización"
+ASSIGN_HIPER = {
+    ("rpa", "RPA (UiPath)"): [("titanic","clasificacion"),("diabetes","clasificacion"),
+        ("mpg","regresion"),("penguins","clustering"),("cancer","anomalia")],
+    ("n8n-make", "n8n & Make"): [("wine","clasificacion"),("california","regresion"),
+        ("iris","clustering"),("tips","regresion"),("diabetes","anomalia")],
+    ("agentes-conversacionales", "Agentes conversacionales"): [("sms","nlp"),("news_tech","nlp"),
+        ("titanic","clasificacion"),("cancer","clasificacion"),("penguins","clasificacion")],
+    ("bpmn", "BPMN & process mining"): [("car_crashes","regresion"),("mpg","regresion"),
+        ("diabetes","clasificacion"),("wine","clustering"),("california","anomalia")],
+    ("idp", "Documentos inteligentes (IDP)"): [("news_sci","nlp"),("sms","nlp"),
+        ("titanic","clasificacion"),("diabetes","clasificacion"),("cancer","anomalia")],
+}
+
+# ── Cloud & Deploy (repurposado a DS/ML/NLP) ───────────────────────────────
+CAT_CLOUD = "Cloud & Deploy"
+ASSIGN_CLOUD = {
+    ("gcp", "Google Cloud (Vertex AI)"): [("diamonds","regresion"),("cancer","clasificacion"),
+        ("penguins","clustering"),("california","regresion"),("wine","clasificacion")],
+    ("cloud-run", "Cloud Run & Functions"): [("titanic","clasificacion"),("diabetes","clasificacion"),
+        ("mpg","regresion"),("iris","clasificacion"),("car_crashes","regresion")],
+    ("bigquery", "BigQuery"): [("california","regresion"),("diamonds","regresion"),
+        ("wine","clasificacion"),("penguins","clasificacion"),("tips","regresion")],
+    ("docker", "Docker & contenedores"): [("cancer","clasificacion"),("diabetes","anomalia"),
+        ("iris","clustering"),("mpg","regresion"),("titanic","clasificacion")],
+    ("serverless", "Arquitectura serverless"): [("penguins","clasificacion"),("wine","clustering"),
+        ("california","anomalia"),("tips","regresion"),("diabetes","clasificacion")],
+    ("cicd", "CI/CD & despliegue"): [("titanic","clasificacion"),("cancer","clasificacion"),
+        ("mpg","regresion"),("iris","clasificacion"),("wine","clasificacion")],
 }

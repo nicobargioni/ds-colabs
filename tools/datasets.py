@@ -72,3 +72,31 @@ def unsup_loader(key: str) -> str:
     d = POOL[key]
     drop = f"\ndf = df.drop(columns=['{d['target']}'])  # no supervisado: solo features" if d.get("target") else ""
     return d["loader"] + drop
+
+# ── Datasets de texto (NLP) — cargan sin HF (sklearn / CSV público) ───────
+def _news(cats):
+    return ("from sklearn.datasets import fetch_20newsgroups\nimport pandas as pd\n"
+            f"cats={cats}\n"
+            "d=fetch_20newsgroups(subset='train', categories=cats, remove=('headers','footers','quotes'))\n"
+            "df=pd.DataFrame({'text':d.data,'label':[d.target_names[t] for t in d.target]})\n"
+            "df=df[df['text'].str.strip().str.len()>0].reset_index(drop=True)\nprint(df.shape)")
+
+POOL.update({
+    "news_tech": dict(name="20 Newsgroups · Tech", source="scikit-learn", problema="nlp", target="label",
+        desc="Posts de foros; clasificación de tópico técnico (hardware, ventanas, gráficos, cripto).",
+        loader=_news(['comp.sys.mac.hardware','comp.windows.x','comp.graphics','sci.crypt'])),
+    "news_sci": dict(name="20 Newsgroups · Ciencia", source="scikit-learn", problema="nlp", target="label",
+        desc="Posts de foros de ciencia: espacio, medicina, electrónica, cripto.",
+        loader=_news(['sci.space','sci.med','sci.electronics','sci.crypt'])),
+    "news_rec": dict(name="20 Newsgroups · Recreación", source="scikit-learn", problema="nlp", target="label",
+        desc="Posts sobre autos, motos, béisbol y hockey.",
+        loader=_news(['rec.autos','rec.motorcycles','rec.sport.baseball','rec.sport.hockey'])),
+    "news_talk": dict(name="20 Newsgroups · Debate", source="scikit-learn", problema="nlp", target="label",
+        desc="Posts de debate: política (armas, medio oriente), religión, ateísmo.",
+        loader=_news(['talk.politics.guns','talk.politics.mideast','talk.religion.misc','alt.atheism'])),
+    "sms": dict(name="SMS Spam", source="UCI (mirror)", problema="nlp", target="label",
+        desc="5572 SMS etiquetados ham/spam; texto corto, clases desbalanceadas.",
+        loader=("import pandas as pd\n"
+                "df=pd.read_csv('https://raw.githubusercontent.com/justmarkham/pycon-2016-tutorial/master/data/sms.tsv',"
+                " sep='\\t', header=None, names=['label','text'])\nprint(df.shape)")),
+})

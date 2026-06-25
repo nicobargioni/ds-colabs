@@ -150,6 +150,26 @@ def build(spec: dict) -> nbformat.NotebookNode:
     section(1, "📥", "Carga de datos", "Lectura del dataset y vista inicial de la tabla.")
     c.append(new_code_cell(spec["loader_code"]))
     c.append(new_code_cell(_LOAD_CHECK))
+    if P == "nlp":
+        section(2, "🔍", "Análisis exploratorio (EDA de texto)",
+                "Balance de clases, longitud de los textos y vocabulario más frecuente.")
+        c.append(new_code_cell(_NLP_EDA))
+        c.append(new_markdown_cell(_EXPL_EDA_NLP))
+        section(3, "🧪", "Representación del texto",
+                "TF-IDF dentro del `Pipeline` (el IDF se ajusta solo con train → sin leakage).")
+        c.append(new_markdown_cell(_EXPL_MODEL["nlp"]))
+        c.append(new_code_cell(_NLP_PREP))
+        section(4, "🧠", "Modelado", "TF-IDF + modelos lineales (LogReg vs LinearSVC) con validación cruzada.")
+        c.append(new_code_cell(_NLP_MODEL))
+        section(5, "📊", "Evaluación", "Desempeño sobre textos no vistos (set de test).")
+        c.append(new_code_cell(_NLP_EVAL))
+        c.append(new_markdown_cell(_EXPL_EVAL["nlp"]))
+        c.append(new_markdown_cell(_concl_md(spec)))
+        nb["metadata"] = {"colab": {"provenance": [], "toc_visible": True},
+                          "kernelspec": {"name": "python3", "display_name": "Python 3"},
+                          "language_info": {"name": "python"}}
+        return nb
+
     section(2, "🔍", "Análisis exploratorio (EDA)",
             "Forma, tipos, faltantes, distribuciones, cardinalidad, correlaciones, outliers y relación con el target.")
     for cell in (_EDA_OVERVIEW, _EDA_MISSING,
@@ -567,3 +587,76 @@ _EXPL_EVAL = {
 **Limitación**: `contamination='auto'` estima la proporción; con conocimiento del dominio conviene fijar la tasa esperada.""",
 }
 _EXPL_EVAL["deep"] = _EXPL_EVAL["clasificacion"]
+
+# ── Plantillas NLP (clasificación de texto) ───────────────────────────────
+_NLP_EDA = """# 2 · EDA de texto
+print('Documentos:', len(df))
+display(df['label'].value_counts().rename('n').to_frame())
+df['_len'] = df['text'].astype(str).str.len()
+display(df['_len'].describe().to_frame().T)
+px.histogram(df, x='_len', nbins=50, color='label',
+             title='Longitud de los textos (caracteres) por clase', labels={'_len':'caracteres'}).show()
+from sklearn.feature_extraction.text import CountVectorizer
+cvz = CountVectorizer(max_features=20, stop_words='english')
+m = cvz.fit_transform(df['text'].astype(str))
+freq = pd.Series(m.sum(axis=0).A1, index=cvz.get_feature_names_out()).sort_values()
+px.bar(x=freq.values, y=freq.index, orientation='h',
+       title='Tokens más frecuentes (sin stopwords)').show()"""
+
+_NLP_PREP = """# 3 · Representación del texto
+# El texto se vectoriza con TF-IDF DENTRO del Pipeline del modelo, así el
+# vocabulario y los pesos IDF se ajustan solo con train (sin data leakage).
+print('Listo: la vectorización TF-IDF se hace dentro del Pipeline (sección 4).')"""
+
+_NLP_MODEL = """# 4 · TF-IDF + modelos lineales con validación cruzada
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import LinearSVC
+X = df['text'].astype(str); y = df['label']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=SEED, stratify=y)
+def mk(clf):
+    return Pipeline([('tfidf', TfidfVectorizer(max_features=20000, ngram_range=(1,2),
+                      stop_words='english', sublinear_tf=True)), ('clf', clf)])
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
+cands = {'LogReg (baseline)': mk(LogisticRegression(max_iter=1000, random_state=SEED)),
+         'LinearSVC': mk(LinearSVC(random_state=SEED))}
+results = {}
+for name, pipe in cands.items():
+    sc = cross_val_score(pipe, X_train, y_train, cv=cv, scoring='f1_macro', n_jobs=-1)
+    results[name] = sc; print(f'{name:20s} F1-macro: {sc.mean():.4f} ± {sc.std():.4f}')
+best_name = max(results, key=lambda k: results[k].mean()); _b = next(k for k in results if 'baseline' in k.lower())
+print(f'\\nMejor modelo: {best_name} = {results[best_name].mean():.3f} · baseline {results[_b].mean():.3f} (Δ {results[best_name].mean()-results[_b].mean():+.3f})')
+best = cands[best_name].fit(X_train, y_train)"""
+
+_NLP_EVAL = """# 5 · Evaluación en test
+from sklearn.metrics import classification_report, confusion_matrix
+y_pred = best.predict(X_test)
+print(classification_report(y_test, y_pred))
+labels = sorted(map(str, y.unique()))
+cm = confusion_matrix(y_test, y_pred)
+px.imshow(cm, x=labels, y=labels, text_auto=True, color_continuous_scale='Blues',
+          labels=dict(x='predicho', y='real', color='n'), title='Matriz de confusión').show()"""
+
+_EXPL_EDA_NLP = """### 🔍 Cómo leer este EDA de texto
+
+- **Balance de clases**: si una clase domina (p. ej. ham ≫ spam), la *accuracy* engaña → evaluamos con **F1-macro**.
+- **Longitud de los textos**: distribuciones muy distintas por clase ya son señal (los spam suelen ser más cortos/largos según el caso).
+- **Tokens frecuentes**: dan intuición del vocabulario; las *stopwords* se quitan para que no tapen las palabras informativas.
+- Esto guía la vectorización: **TF-IDF** pondera términos frecuentes en un documento pero raros en el corpus (los más discriminativos)."""
+
+_EXPL_MODEL["nlp"] = """### 🧠 Por qué TF-IDF + modelos lineales
+
+Para texto, **TF-IDF + un modelo lineal** es un baseline fortísimo y rápido (a menudo difícil de superar sin transformers):
+
+1. **TF-IDF** (`ngram_range=(1,2)`, `sublinear_tf`, `stop_words='english'`): representa cada documento por la importancia de sus términos y bigramas.
+2. **Regresión logística** vs **LinearSVC**: ambos lineales sobre el espacio TF-IDF; SVM lineal suele rendir muy bien en texto disperso de alta dimensión.
+
+El vectorizador va **dentro del `Pipeline`** → el IDF se ajusta solo con train (sin leakage). Validación cruzada 5-fold con **F1-macro** (tolera desbalance)."""
+
+_EXPL_EVAL["nlp"] = """### 📊 Cómo interpretar estas métricas
+
+- **F1-macro**: promedia el F1 por clase sin que la mayoritaria domine — la métrica honesta cuando hay desbalance.
+- **Matriz de confusión**: revelá qué temas/clases se confunden entre sí (suelen ser los semánticamente cercanos).
+- **Precision vs Recall por clase**: en spam, un *recall* alto en la clase "spam" importa más que la accuracy global.
+
+**Limitación**: TF-IDF ignora el orden y el contexto; para problemas donde la semántica fina importa, el paso siguiente son **embeddings** (sentence-transformers) o *fine-tuning* de un transformer."""
