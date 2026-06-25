@@ -156,14 +156,25 @@ def build(spec: dict) -> nbformat.NotebookNode:
                  _EDA_TARGET.replace("__TARGET__", T).replace("__P__", P),
                  _EDA_NUMERIC, _EDA_CATEGORICAL, _EDA_CORR, _EDA_OUTLIERS):
         c.append(new_code_cell(cell))
-    section(3, "🧪", "Preprocesamiento",
-            "Split antes de transformar; imputación, escalado y encoding dentro de un `Pipeline` (ajustado solo con train → sin leakage).")
-    c.append(new_code_cell(_SPLIT.replace("__TARGET__", T).replace("__P__", P)))
-    c.append(new_code_cell(_PREPROCESS))
-    section(4, "🧠", "Modelado", "Baseline interpretable vs. ensemble, comparados con validación cruzada.")
-    c.append(new_code_cell(_MODEL.get(P, _MODEL["clasificacion"])))
-    section(5, "📊", "Evaluación", "Desempeño sobre datos nunca vistos (set de test).")
-    c.append(new_code_cell(_EVAL.get(P, _EVAL["clasificacion"])))
+    if P in ("clustering", "anomalia"):
+        section(3, "🧪", "Preprocesamiento",
+                "Escalado y encoding sobre todo el conjunto (problema no supervisado, sin target).")
+        c.append(new_code_cell(_UNSUP_PREP))
+        section(4, "🧠", "Modelado",
+                "K-Means con selección de k (codo + silueta)." if P == "clustering"
+                else "Isolation Forest para señalar observaciones atípicas.")
+        c.append(new_code_cell(_MODEL[P]))
+        section(5, "📊", "Evaluación", "Interpretación de los grupos / anomalías (proyección PCA 2D).")
+        c.append(new_code_cell(_EVAL[P]))
+    else:
+        section(3, "🧪", "Preprocesamiento",
+                "Split antes de transformar; imputación, escalado y encoding dentro de un `Pipeline` (ajustado solo con train → sin leakage).")
+        c.append(new_code_cell(_SPLIT.replace("__TARGET__", T).replace("__P__", P)))
+        c.append(new_code_cell(_PREPROCESS))
+        section(4, "🧠", "Modelado", "Baseline interpretable vs. ensemble, comparados con validación cruzada.")
+        c.append(new_code_cell(_MODEL.get(P, _MODEL["clasificacion"])))
+        section(5, "📊", "Evaluación", "Desempeño sobre datos nunca vistos (set de test).")
+        c.append(new_code_cell(_EVAL.get(P, _EVAL["clasificacion"])))
     c.append(new_markdown_cell(_concl_md(spec)))
 
     nb["metadata"] = {
@@ -378,3 +389,73 @@ fig.update_traces(marker_color=PRIMARY)
 fig.add_trace(go.Scatter(x=lims, y=lims, mode='lines', line=dict(dash='dash', color=ACCENT), showlegend=False))
 fig.show()""",
 }
+
+# ── Plantillas no supervisadas (clustering / anomalías) ───────────────────
+_UNSUP_PREP = """# 3 · Preprocesamiento (no supervisado): escalado + encoding sobre todo X
+num_feats = df.select_dtypes(include='number').columns.tolist()
+cat_feats = df.select_dtypes(exclude='number').columns.tolist()
+numeric = Pipeline([('imp', SimpleImputer(strategy='median')), ('sc', StandardScaler())])
+categ = Pipeline([('imp', SimpleImputer(strategy='most_frequent')),
+                  ('oh', OneHotEncoder(handle_unknown='ignore', sparse_output=False))])
+preprocess = ColumnTransformer([('num', numeric, num_feats), ('cat', categ, cat_feats)])
+Xp = preprocess.fit_transform(df)
+print('Matriz preprocesada:', Xp.shape)"""
+
+_MODEL["clustering"] = """# 4 · K-Means: elegir k con el codo (inercia) y la silueta
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+ks = list(range(2, 9)); inertias = []; sils = []
+for k in ks:
+    km = KMeans(n_clusters=k, random_state=SEED, n_init=10).fit(Xp)
+    inertias.append(km.inertia_); sils.append(silhouette_score(Xp, km.labels_))
+fig = sp.make_subplots(rows=1, cols=2, subplot_titles=('Codo (inercia)', 'Silueta'))
+fig.add_trace(go.Scatter(x=ks, y=inertias, mode='lines+markers', line=dict(color=PRIMARY)), row=1, col=1)
+fig.add_trace(go.Scatter(x=ks, y=sils, mode='lines+markers', line=dict(color=ACCENT)), row=1, col=2)
+fig.update_layout(height=360, showlegend=False, template='plotly_dark'); fig.show()
+best_k = ks[int(np.argmax(sils))]
+print('k elegido por silueta:', best_k)
+km = KMeans(n_clusters=best_k, random_state=SEED, n_init=10).fit(Xp)
+df['cluster'] = km.labels_"""
+
+_EVAL["clustering"] = """# 5 · Interpretación: clusters proyectados en 2D (PCA)
+from sklearn.decomposition import PCA
+pca = PCA(n_components=2, random_state=SEED); coords = pca.fit_transform(Xp)
+px.scatter(x=coords[:, 0], y=coords[:, 1], color=df['cluster'].astype(str),
+           labels={'x': 'PC1', 'y': 'PC2', 'color': 'cluster'},
+           title=f'Clusters (PCA 2D) · varianza explicada {pca.explained_variance_ratio_.sum():.0%}').show()
+display(df.groupby('cluster').size().rename('n').to_frame())"""
+
+_MODEL["anomalia"] = """# 4 · Detección de anomalías con Isolation Forest
+from sklearn.ensemble import IsolationForest
+iso = IsolationForest(random_state=SEED, contamination='auto').fit(Xp)
+scores = iso.decision_function(Xp); pred = iso.predict(Xp)   # -1 = anómalo
+df['anomalia'] = (pred == -1)
+print('Anomalías detectadas:', int(df['anomalia'].sum()), f'({df[\"anomalia\"].mean()*100:.1f}%)')"""
+
+_EVAL["anomalia"] = """# 5 · Score de anomalía + proyección 2D (PCA)
+px.histogram(x=scores, nbins=50, title='Score de anomalía (menor = más atípico)',
+             labels={'x': 'score'}).show()
+from sklearn.decomposition import PCA
+coords = PCA(n_components=2, random_state=SEED).fit_transform(Xp)
+px.scatter(x=coords[:, 0], y=coords[:, 1],
+           color=df['anomalia'].map({False: 'normal', True: 'anomalía'}),
+           color_discrete_map={'normal': PRIMARY, 'anomalía': ACCENT},
+           labels={'x': 'PC1', 'y': 'PC2', 'color': ''}, title='Anomalías (PCA 2D)').show()"""
+
+# Variante "deep": red neuronal (MLP) para clasificación
+_MODEL["deep"] = """# 4 · Red neuronal (MLP) vs. baseline lineal — validación cruzada
+from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
+scoring = 'roc_auc' if y.nunique()==2 else 'f1_macro'
+cands = {'LogReg (baseline)': LogisticRegression(max_iter=1000, random_state=SEED),
+         'MLP (red neuronal)': MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=400,
+                                             early_stopping=True, random_state=SEED)}
+results = {}
+for name, clf in cands.items():
+    pipe = Pipeline([('prep', preprocess), ('clf', clf)])
+    sc = cross_val_score(pipe, X_train, y_train, cv=cv, scoring=scoring, n_jobs=-1)
+    results[name] = sc; print(f'{name:22s} {scoring}: {sc.mean():.4f} ± {sc.std():.4f}')
+best_name = max(results, key=lambda k: results[k].mean()); print('\\nMejor:', best_name)
+best = Pipeline([('prep', preprocess), ('clf', cands[best_name])]).fit(X_train, y_train)"""
+_EVAL["deep"] = _EVAL["clasificacion"]
