@@ -248,3 +248,46 @@ EDU_CSS = r"""<style>
      .edu-kicker,.edu-mega,.edu-lede,.edu-cta,.edu-glass{animation:none!important;}
   }
 </style>"""
+
+# Banner "hero" compacto para encabezar TODAS las secciones HTML (mismo lenguaje
+# visual que la portada: panel oscuro, barra animada, glow, título extruido).
+BANNER_CSS = r"""<style>
+.edu-banner{position:relative;overflow:hidden;border-radius:20px;margin:26px auto;max-width:1140px;
+  padding:28px 42px;color:#e9f1fb;font-family:'Archivo',system-ui,sans-serif;line-height:1.62;font-size:15px;
+  background:radial-gradient(72% 130% at 90% -25%,rgba(127,212,255,.16),transparent 60%),
+             radial-gradient(80% 120% at 0% 132%,rgba(40,150,140,.14),transparent 60%),
+             linear-gradient(168deg,#0c1a2b,#0a1626 58%,#060f1b);
+  border:1px solid rgba(140,180,224,.16);box-shadow:0 30px 70px rgba(3,8,18,.5),inset 0 1px 0 rgba(255,255,255,.05);}
+.edu-banner::before{content:"";position:absolute;top:0;left:0;right:0;height:4px;z-index:2;
+  background:linear-gradient(90deg,#1d6fb0,#43c4b0 35%,#7fd4ff 55%,#43c4b0 75%,#1d6fb0);
+  background-size:220% 100%;animation:eduBarFlow 7s linear infinite;}
+.edu-banner>*{position:relative;z-index:1;}
+.edu-banner .eb{display:inline-block;font-family:'Archivo Expanded','Archivo',sans-serif;font-size:10.5px;
+  font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#7fd4ff;
+  background:rgba(127,212,255,.08);border:1px solid rgba(127,212,255,.30);padding:5px 15px;border-radius:999px;
+  animation:eduPulse 3.4s ease-in-out infinite;}
+.edu-banner h2{font-family:'Archivo Black',sans-serif;text-transform:uppercase;color:#f6faff;
+  margin:15px 0 0;font-size:clamp(24px,3.2vw,38px);line-height:.96;letter-spacing:-.01em;
+  text-shadow:0 2px 0 #8593a8,0 8px 18px rgba(0,0,0,.5);animation:eduRise .7s cubic-bezier(.2,.7,.2,1) both;}
+.edu-banner h2 em{font-style:normal;color:#7fd4ff;text-shadow:0 0 26px rgba(127,212,255,.5);}
+.edu-banner .lede{margin:14px 0 0;max-width:700px;color:#c4d3e4;font-size:15px;}
+.edu-banner .step{position:absolute;right:34px;top:50%;transform:translateY(-50%);z-index:0;
+  font-family:'Archivo Black',sans-serif;font-size:104px;line-height:1;color:rgba(127,212,255,.09);}
+.edu-banner h3{font-family:'Archivo Expanded','Archivo',sans-serif;color:#7fd4ff;font-size:12px;
+  letter-spacing:1.4px;text-transform:uppercase;margin:22px 0 6px;}
+.edu-banner p{margin:8px 0;color:#cdd9e7;} .edu-banner b{color:#fff;}
+.edu-banner ul{margin:10px 0 0;padding-left:2px;list-style:none;}
+.edu-banner ul li{position:relative;padding-left:24px;margin:9px 0;color:#cdd9e7;}
+.edu-banner ul li::before{content:"";position:absolute;left:3px;top:8px;width:8px;height:8px;border-radius:2px;
+  background:linear-gradient(135deg,#7fd4ff,#43c4b0);transform:rotate(45deg);box-shadow:0 0 8px rgba(127,212,255,.5);}
+.edu-banner .row{display:flex;gap:16px;margin:12px 0;padding:14px 18px;border-radius:13px;
+  background:rgba(8,16,28,.5);border:1px solid rgba(140,180,224,.14);border-left:3px solid #43c4b0;}
+.edu-banner .row.alt{border-left-color:#ff9f5c;}
+.edu-banner .row .k{flex:0 0 132px;font:700 11px/1.5 'Archivo Expanded','Archivo',sans-serif;letter-spacing:1px;
+  text-transform:uppercase;color:#ff9f5c;}
+.edu-banner .row .v{flex:1;color:#dde7f2;font-size:14.5px;}
+.edu-banner .foot{margin-top:22px;border-top:1px dashed rgba(140,180,224,.22);padding-top:13px;
+  font-size:12.5px;color:#8295ab;}
+@media (max-width:820px){.edu-banner{padding:22px 24px;} .edu-banner .step{display:none;}
+  .edu-banner .row{flex-direction:column;gap:4px;} .edu-banner .row .k{flex:none;}}
+</style>"""

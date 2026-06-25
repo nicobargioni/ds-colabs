@@ -21,7 +21,7 @@ from nbformat.v4 import new_notebook, new_markdown_cell, new_code_cell
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from style import EDU_CSS  # noqa: E402
+from style import EDU_CSS, BANNER_CSS  # noqa: E402
 
 # Familias de color (hue-rotate en grados, saturación). Variedad entre notebooks.
 HUES = [(0, 1.0), (28, 1.05), (62, 1.0), (118, 0.95), (165, 1.0),
@@ -95,33 +95,36 @@ def _portada(s: dict) -> str:
 </div>"""
 
 
+def _banner(n: int, title: str, lede: str) -> str:
+    return (f'<div class="edu-banner"><span class="eb">Sección {n:02d}</span>'
+            f'<h2>{_esc(title)}</h2><p class="lede">{_esc(lede)}</p>'
+            f'<span class="step">{n}</span></div>')
+
+
+def _row(k: str, v: str, alt: bool = False) -> str:
+    return (f'<div class="row{" alt" if alt else ""}"><div class="k">{_esc(k)}</div>'
+            f'<div class="v">{_esc(v)}</div></div>')
+
+
 def _marco(s: dict) -> str:
     metrica = s["ficha"].get("Métrica", s.get("metrica", ""))
-    return f"""<div class="edu edu-sheet">
-  <span class="edu-eyebrow">Marco del trabajo</span>
-  <h2>1 · Objetivo</h2><p>{_esc(s["objetivo"])}</p>
-  <h2 class="alt">2 · Hipótesis</h2>
-  <div class="edu-note">{_esc(s["hipotesis"])}</div>
-  <h2>3 · Datos</h2><p>{_esc(s["datos_desc"])}</p>
-  <h2 class="alt">4 · Metodología</h2><p>{_esc(s["metodologia"])}</p>
-  <h2>5 · Métrica de evaluación</h2>
-  <div class="edu-ok">{_esc(metrica)}</div>
-  <div class="edu-foot">Notebook ejecutable top-down · <code>random_state=42</code> · preprocesamiento sin data leakage.</div>
-</div>"""
+    rows = (_row("Objetivo", s["objetivo"]) + _row("Hipótesis", s["hipotesis"], True)
+            + _row("Datos", s["datos_desc"]) + _row("Metodología", s["metodologia"], True)
+            + _row("Métrica", metrica))
+    return (f'<div class="edu-banner"><span class="eb">Marco del trabajo</span>'
+            f'<h2>Cómo abordo <em>el problema</em></h2>{rows}'
+            f'<div class="foot">Ejecutable top-down · <b>random_state=42</b> · preprocesamiento sin data leakage.</div></div>')
 
 
 def _concl(s: dict) -> str:
     items = "".join(f"<li>{x}</li>" for x in s["conclusiones"])
-    return f"""<div class="edu edu-sheet">
-  <span class="edu-eyebrow">Conclusiones</span>
-  <h2>Hallazgos y próximos pasos</h2>
-  <ul>{items}</ul>
-  <div class="edu-foot">Nicolás Bargioni · Data Scientist · nicolasbargioni.com</div>
-</div>"""
+    return (f'<div class="edu-banner"><span class="eb">Conclusiones</span>'
+            f'<h2>Hallazgos y <em>próximos pasos</em></h2><ul>{items}</ul>'
+            f'<div class="foot">Nicolás Bargioni · Data Scientist · nicolasbargioni.com</div></div>')
 
 
 def _html_cell(title: str, inner_html: str, with_css: bool, seed: str) -> str:
-    body = (EDU_CSS if with_css else "") + _wrap(inner_html, seed)
+    body = ((EDU_CSS + BANNER_CSS) if with_css else "") + _wrap(inner_html, seed)
     return (f"#@title {title}\nfrom IPython.display import HTML, display\n"
             f"display(HTML(r'''{body}'''))")
 
@@ -140,26 +143,27 @@ def build(spec: dict) -> nbformat.NotebookNode:
     c.append(new_code_cell(_html_cell("📌 Portada", _portada(spec), True, seed)))
     c.append(new_code_cell(_html_cell("🧭 Marco del trabajo", _marco(spec), False, seed)))
 
-    c.append(new_markdown_cell("## 0 · Setup"))
+    def banner(n, title, lede, emoji):
+        c.append(new_code_cell(_html_cell(f"{emoji} {title}", _banner(n, title, lede), False, seed)))
+
+    banner(0, "Setup", "Dependencias, imports y configuración global (reproducibilidad).", "🛠")
     c.append(new_code_cell(_SETUP))
-    c.append(new_markdown_cell("## 1 · Carga de datos"))
+    banner(1, "Carga de datos", "Lectura del dataset y vista inicial de la tabla.", "📥")
     c.append(new_code_cell(spec["loader_code"]))
     c.append(new_code_cell(_LOAD_CHECK))
-    c.append(new_markdown_cell(
-        "## 2 · Análisis exploratorio (EDA)\nForma, tipos, faltantes, distribuciones, "
-        "cardinalidad, correlaciones, outliers y relación con el target."))
+    banner(2, "Análisis exploratorio (EDA)",
+           "Forma, tipos, faltantes, distribuciones, cardinalidad, correlaciones, outliers y relación con el target.", "🔍")
     for cell in (_EDA_OVERVIEW, _EDA_MISSING,
                  _EDA_TARGET.replace("__TARGET__", T).replace("__P__", P),
                  _EDA_NUMERIC, _EDA_CATEGORICAL, _EDA_CORR, _EDA_OUTLIERS):
         c.append(new_code_cell(cell))
-    c.append(new_markdown_cell(
-        "## 3 · Preprocesamiento\nSplit antes de transformar; imputación + escalado + "
-        "encoding dentro de `Pipeline` (se ajustan solo con train → sin leakage)."))
+    banner(3, "Preprocesamiento",
+           "Split antes de transformar; imputación, escalado y encoding dentro de un Pipeline (ajustado solo con train → sin leakage).", "🧪")
     c.append(new_code_cell(_SPLIT.replace("__TARGET__", T).replace("__P__", P)))
     c.append(new_code_cell(_PREPROCESS))
-    c.append(new_markdown_cell("## 4 · Modelado"))
+    banner(4, "Modelado", "Baseline interpretable vs. ensemble, comparados con validación cruzada.", "🧠")
     c.append(new_code_cell(_MODEL.get(P, _MODEL["clasificacion"])))
-    c.append(new_markdown_cell("## 5 · Evaluación"))
+    banner(5, "Evaluación", "Desempeño sobre datos nunca vistos (set de test).", "📊")
     c.append(new_code_cell(_EVAL.get(P, _EVAL["clasificacion"])))
     # Conclusiones (HTML detrás de #@title)
     c.append(new_code_cell(_html_cell("✅ Conclusiones", _concl(spec), False, seed)))
@@ -181,27 +185,33 @@ def write(spec: dict, path: str) -> str:
 # ── Plantillas de celdas de código (rigurosas, data-agnósticas) ───────────
 _SETUP = """# 0.1 Dependencias (Colab ya trae casi todo; instala solo lo que falte)
 import importlib, sys, subprocess
-for _p in ['datasets', 'seaborn']:
+for _p in ['datasets', 'plotly']:
     if importlib.util.find_spec(_p) is None:
         subprocess.run([sys.executable, '-m', 'pip', '-q', 'install', _p])
 
 # 0.2 Imports
 import warnings; warnings.filterwarnings('ignore')
 import numpy as np, pandas as pd
-import matplotlib.pyplot as plt, seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
+import plotly.io as pio
+import plotly.subplots as sp
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, KFold
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
-# 0.3 Configuración global (reproducibilidad + estética)
+# 0.3 Configuración global (reproducibilidad + estética de los gráficos)
 SEED = 42
 np.random.seed(SEED)
 pd.set_option('display.max_columns', 60)
-sns.set_theme(style='whitegrid'); plt.rcParams['figure.dpi'] = 110
-PRIMARY, ACCENT = '#0891b2', '#f0521f'
-print('Setup OK · numpy', np.__version__, '· pandas', pd.__version__)"""
+PRIMARY, ACCENT, TEAL = '#7fd4ff', '#ff9f5c', '#43c4b0'
+COLORWAY = ['#7fd4ff', '#ff9f5c', '#43c4b0', '#bfe6ff', '#ffd9b8', '#5ce0b5']
+pio.templates.default = 'plotly_dark'   # coherente con la estética oscura del notebook
+px.defaults.color_discrete_sequence = COLORWAY
+px.defaults.template = 'plotly_dark'
+print('Setup OK · pandas', pd.__version__, '· plotly listo (gráficos interactivos)')"""
 
 _LOAD_CHECK = """# Vista rápida (el loader debe dejar un DataFrame `df`)
 assert 'df' in globals(), 'El loader debe definir un DataFrame llamado df'
@@ -218,12 +228,12 @@ display(df.dtypes.value_counts().rename('columnas').to_frame())
 df.info()"""
 
 _EDA_MISSING = """# 2.2 Valores faltantes
-na = df.isna().sum(); na = na[na > 0].sort_values(ascending=False)
+na = df.isna().sum(); na = na[na > 0].sort_values()
 if len(na):
-    display(pd.DataFrame({'faltantes': na, '%': (na/len(df)*100).round(2)}))
-    plt.figure(figsize=(7, max(2, 0.4*len(na))))
-    sns.barplot(x=na.values, y=na.index, color=PRIMARY)
-    plt.title('Faltantes por columna'); plt.xlabel('cantidad'); plt.tight_layout(); plt.show()
+    display(pd.DataFrame({'faltantes': na[::-1], '%': (na[::-1]/len(df)*100).round(2)}))
+    fig = px.bar(x=na.values, y=na.index, orientation='h',
+                 labels={'x': 'cantidad', 'y': ''}, title='Valores faltantes por columna')
+    fig.update_traces(marker_color=PRIMARY); fig.update_layout(height=80+34*len(na)); fig.show()
 else:
     print('Sin valores faltantes.')"""
 
@@ -232,13 +242,12 @@ TARGET = "__TARGET__"
 if TARGET and TARGET in df.columns:
     if "__P__" == 'regresion':
         display(df[TARGET].describe().to_frame())
-        plt.figure(figsize=(6,3)); sns.histplot(df[TARGET], kde=True, color=PRIMARY)
-        plt.title(f'Distribución de {TARGET}'); plt.tight_layout(); plt.show()
+        px.histogram(df, x=TARGET, nbins=40, title=f'Distribución de {TARGET}').show()
     else:
         vc = df[TARGET].value_counts(dropna=False)
         display(pd.DataFrame({'n': vc, '%': (vc/len(df)*100).round(2)}))
-        plt.figure(figsize=(5,3)); sns.barplot(x=vc.index.astype(str), y=vc.values, color=PRIMARY)
-        plt.title(f'Balance — {TARGET}'); plt.ylabel('n'); plt.tight_layout(); plt.show()
+        px.bar(x=vc.index.astype(str), y=vc.values, labels={'x': TARGET, 'y': 'n'},
+               title=f'Balance de clases — {TARGET}').show()
         imb = vc.min()/vc.max()
         print(f'Ratio min/max de clases: {imb:.2f}' + ('  ⚠️ desbalanceado' if imb < 0.4 else ''))
 else:
@@ -249,11 +258,12 @@ num_cols = df.select_dtypes(include='number').columns.tolist()
 if num_cols:
     display(df[num_cols].describe().T)
     cols = num_cols[:9]; rows = (len(cols)+2)//3
-    fig, axes = plt.subplots(rows, 3, figsize=(13, 3*rows))
-    for ax, col in zip(np.ravel(axes), cols):
-        sns.histplot(df[col].dropna(), kde=True, ax=ax, color=PRIMARY); ax.set_title(col, fontsize=10)
-    for ax in np.ravel(axes)[len(cols):]: ax.axis('off')
-    plt.tight_layout(); plt.show()
+    fig = sp.make_subplots(rows=rows, cols=3, subplot_titles=cols)
+    for i, col in enumerate(cols):
+        fig.add_trace(go.Histogram(x=df[col].dropna(), marker_color=PRIMARY, name=col),
+                      row=i//3+1, col=i%3+1)
+    fig.update_layout(height=300*rows, showlegend=False, title_text='Distribuciones numéricas',
+                      template='plotly_dark'); fig.show()
 else:
     print('Sin columnas numéricas.')"""
 
@@ -270,10 +280,10 @@ else:
 _EDA_CORR = """# 2.6 Matriz de correlación (numéricas)
 num_cols = df.select_dtypes(include='number').columns.tolist()
 if len(num_cols) >= 2:
-    corr = df[num_cols].corr(numeric_only=True)
-    plt.figure(figsize=(min(1+0.7*len(num_cols),12), min(1+0.6*len(num_cols),10)))
-    sns.heatmap(corr, annot=len(num_cols)<=12, fmt='.2f', cmap='coolwarm', center=0, square=True)
-    plt.title('Correlaciones'); plt.tight_layout(); plt.show()
+    corr = df[num_cols].corr(numeric_only=True).round(2)
+    fig = px.imshow(corr, color_continuous_scale='RdBu_r', zmin=-1, zmax=1, aspect='auto',
+                    text_auto=(len(num_cols) <= 12), title='Matriz de correlación')
+    fig.show()
 else:
     print('Pocas numéricas para correlación.')"""
 
@@ -339,27 +349,34 @@ best = Pipeline([('prep', preprocess), ('reg', cands[best_name])]).fit(X_train, 
 
 _EVAL = {
 "clasificacion": """# 5 · Evaluación en test (datos nunca vistos)
-from sklearn.metrics import (classification_report, confusion_matrix,
-    ConfusionMatrixDisplay, RocCurveDisplay)
+from sklearn.metrics import classification_report, confusion_matrix, roc_curve, auc
 y_pred = best.predict(X_test)
 print(classification_report(y_test, y_pred))
-binary = y.nunique() == 2
-fig, ax = plt.subplots(1, 2 if binary else 1, figsize=(11,4) if binary else (5,4))
-ax0 = ax[0] if binary else ax
-ConfusionMatrixDisplay(confusion_matrix(y_test, y_pred),
-    display_labels=sorted(map(str, y.unique()))).plot(ax=ax0, cmap='Blues', colorbar=False)
-ax0.set_title('Matriz de confusión')
-if binary:
-    RocCurveDisplay.from_estimator(best, X_test, y_test, ax=ax[1], color=ACCENT); ax[1].set_title('Curva ROC')
-plt.tight_layout(); plt.show()""",
+labels = sorted(map(str, y.unique()))
+cm = confusion_matrix(y_test, y_pred)
+px.imshow(cm, x=labels, y=labels, text_auto=True, color_continuous_scale='Blues',
+          labels=dict(x='predicho', y='real', color='n'), title='Matriz de confusión').show()
+if y.nunique() == 2 and hasattr(best, 'predict_proba'):
+    pos = sorted(y.unique())[-1]
+    proba = best.predict_proba(X_test)[:, list(best.classes_).index(pos)]
+    fpr, tpr, _ = roc_curve((y_test == pos).astype(int), proba)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', line=dict(color=ACCENT, width=3),
+                             name=f'AUC = {auc(fpr, tpr):.3f}', fill='tozeroy'))
+    fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines',
+                             line=dict(dash='dash', color='gray'), showlegend=False))
+    fig.update_layout(title='Curva ROC', xaxis_title='FPR', yaxis_title='TPR', template='plotly_dark')
+    fig.show()""",
 "regresion": """# 5 · Evaluación en test (datos nunca vistos)
 from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 y_pred = best.predict(X_test)
 print(f'R2  : {r2_score(y_test, y_pred):.4f}')
 print(f'MAE : {mean_absolute_error(y_test, y_pred):.4f}')
 print(f'RMSE: {mean_squared_error(y_test, y_pred)**0.5:.4f}')
-plt.figure(figsize=(5,5)); plt.scatter(y_test, y_pred, alpha=.4, color=PRIMARY)
-lims = [min(y_test.min(), y_pred.min()), max(y_test.max(), y_pred.max())]
-plt.plot(lims, lims, '--', color=ACCENT); plt.xlabel('real'); plt.ylabel('predicho')
-plt.title('Predicho vs. real'); plt.tight_layout(); plt.show()""",
+lims = [float(min(y_test.min(), y_pred.min())), float(max(y_test.max(), y_pred.max()))]
+fig = px.scatter(x=y_test, y=y_pred, opacity=.5, labels={'x': 'real', 'y': 'predicho'},
+                 title='Predicho vs. real')
+fig.update_traces(marker_color=PRIMARY)
+fig.add_trace(go.Scatter(x=lims, y=lims, mode='lines', line=dict(dash='dash', color=ACCENT), showlegend=False))
+fig.show()""",
 }
