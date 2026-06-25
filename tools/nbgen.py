@@ -156,25 +156,33 @@ def build(spec: dict) -> nbformat.NotebookNode:
                  _EDA_TARGET.replace("__TARGET__", T).replace("__P__", P),
                  _EDA_NUMERIC, _EDA_CATEGORICAL, _EDA_CORR, _EDA_OUTLIERS):
         c.append(new_code_cell(cell))
+    c.append(new_markdown_cell(_EXPL_EDA))  # interpretación del EDA
+
     if P in ("clustering", "anomalia"):
         section(3, "🧪", "Preprocesamiento",
                 "Escalado y encoding sobre todo el conjunto (problema no supervisado, sin target).")
+        c.append(new_markdown_cell(_EXPL_PREP_UNSUP))
         c.append(new_code_cell(_UNSUP_PREP))
         section(4, "🧠", "Modelado",
                 "K-Means con selección de k (codo + silueta)." if P == "clustering"
                 else "Isolation Forest para señalar observaciones atípicas.")
+        c.append(new_markdown_cell(_EXPL_MODEL[P]))
         c.append(new_code_cell(_MODEL[P]))
         section(5, "📊", "Evaluación", "Interpretación de los grupos / anomalías (proyección PCA 2D).")
         c.append(new_code_cell(_EVAL[P]))
+        c.append(new_markdown_cell(_EXPL_EVAL[P]))
     else:
         section(3, "🧪", "Preprocesamiento",
                 "Split antes de transformar; imputación, escalado y encoding dentro de un `Pipeline` (ajustado solo con train → sin leakage).")
+        c.append(new_markdown_cell(_EXPL_PREP))
         c.append(new_code_cell(_SPLIT.replace("__TARGET__", T).replace("__P__", P)))
         c.append(new_code_cell(_PREPROCESS))
         section(4, "🧠", "Modelado", "Baseline interpretable vs. ensemble, comparados con validación cruzada.")
+        c.append(new_markdown_cell(_EXPL_MODEL.get(P, _EXPL_MODEL["clasificacion"])))
         c.append(new_code_cell(_MODEL.get(P, _MODEL["clasificacion"])))
         section(5, "📊", "Evaluación", "Desempeño sobre datos nunca vistos (set de test).")
         c.append(new_code_cell(_EVAL.get(P, _EVAL["clasificacion"])))
+        c.append(new_markdown_cell(_EXPL_EVAL.get(P, _EXPL_EVAL["clasificacion"])))
     c.append(new_markdown_cell(_concl_md(spec)))
 
     nb["metadata"] = {
@@ -339,7 +347,8 @@ for name, clf in cands.items():
     pipe = Pipeline([('prep', preprocess), ('clf', clf)])
     sc = cross_val_score(pipe, X_train, y_train, cv=cv, scoring=scoring, n_jobs=-1)
     results[name] = sc; print(f'{name:22s} {scoring}: {sc.mean():.4f} ± {sc.std():.4f}')
-best_name = max(results, key=lambda k: results[k].mean()); print('\\nMejor:', best_name)
+best_name = max(results, key=lambda k: results[k].mean()); _b = next(k for k in results if 'baseline' in k.lower())
+print(f'\\nMejor modelo: {best_name} = {results[best_name].mean():.3f} · baseline {results[_b].mean():.3f} (Δ {results[best_name].mean()-results[_b].mean():+.3f})')
 best = Pipeline([('prep', preprocess), ('clf', cands[best_name])]).fit(X_train, y_train)""",
 "regresion": """# 4 · Candidatos (baseline + ensemble) con validación cruzada
 from sklearn.linear_model import LinearRegression
@@ -352,7 +361,8 @@ for name, reg in cands.items():
     pipe = Pipeline([('prep', preprocess), ('reg', reg)])
     sc = cross_val_score(pipe, X_train, y_train, cv=cv, scoring='r2', n_jobs=-1)
     results[name] = sc; print(f'{name:22s} R2: {sc.mean():.4f} ± {sc.std():.4f}')
-best_name = max(results, key=lambda k: results[k].mean()); print('\\nMejor:', best_name)
+best_name = max(results, key=lambda k: results[k].mean()); _b = next(k for k in results if 'baseline' in k.lower())
+print(f'\\nMejor modelo: {best_name} = {results[best_name].mean():.3f} · baseline {results[_b].mean():.3f} (Δ {results[best_name].mean()-results[_b].mean():+.3f})')
 best = Pipeline([('prep', preprocess), ('reg', cands[best_name])]).fit(X_train, y_train)""",
 }
 
@@ -456,6 +466,104 @@ for name, clf in cands.items():
     pipe = Pipeline([('prep', preprocess), ('clf', clf)])
     sc = cross_val_score(pipe, X_train, y_train, cv=cv, scoring=scoring, n_jobs=-1)
     results[name] = sc; print(f'{name:22s} {scoring}: {sc.mean():.4f} ± {sc.std():.4f}')
-best_name = max(results, key=lambda k: results[k].mean()); print('\\nMejor:', best_name)
+best_name = max(results, key=lambda k: results[k].mean()); _b = next(k for k in results if 'baseline' in k.lower())
+print(f'\\nMejor modelo: {best_name} = {results[best_name].mean():.3f} · baseline {results[_b].mean():.3f} (Δ {results[best_name].mean()-results[_b].mean():+.3f})')
 best = Pipeline([('prep', preprocess), ('clf', cands[best_name])]).fit(X_train, y_train)"""
 _EVAL["deep"] = _EVAL["clasificacion"]
+
+# ── Bloques explicativos en profundidad (celdas Markdown) ─────────────────
+_EXPL_EDA = """### 🔍 Cómo leer este EDA
+
+El EDA no es decorativo: **cada hallazgo condiciona una decisión de modelado**.
+
+- **Faltantes** → definen la estrategia de imputación. Pocos nulos se imputan (mediana en numéricas, moda en categóricas); demasiados pueden justificar descartar la columna.
+- **Distribución / balance del target** → si las clases están desbalanceadas, la *accuracy* engaña; por eso más abajo evaluamos con **ROC-AUC / F1-macro**. En regresión, un target muy sesgado puede pedir transformaciones (log).
+- **Distribuciones y outliers** → sesgos fuertes y valores extremos favorecen escalado robusto y modelos de árboles (que no asumen normalidad).
+- **Correlaciones** → variables muy correlacionadas aportan información redundante (afecta más a modelos lineales que a árboles) y pueden anticipar multicolinealidad.
+- **Cardinalidad de categóricas** → una cardinalidad alta hace explotar el *one-hot encoding*; conviene vigilarla antes de preprocesar."""
+
+_EXPL_PREP = """### 🧪 Por qué este preprocesamiento
+
+- **Primero separar, después transformar.** Si imputáramos o escaláramos con todo el dataset, el test "filtraría" información al entrenamiento (*data leakage*) y las métricas saldrían infladas. Por eso el split va **antes** y las transformaciones se ajustan **solo con train**, encapsuladas en un `Pipeline`.
+- **Imputación:** mediana en numéricas (robusta a outliers), moda en categóricas.
+- **Escalado** (`StandardScaler`): media 0, desvío 1. Crítico para modelos sensibles a la escala (lineales, basados en distancias); los árboles no lo necesitan, pero no se perjudican.
+- **Encoding** (`OneHotEncoder`, `handle_unknown='ignore'`): categóricas → columnas binarias, tolerando categorías nuevas en test.
+- **Split estratificado** (clasificación): preserva la proporción de clases en train y test."""
+
+_EXPL_PREP_UNSUP = """### 🧪 Por qué este preprocesamiento
+
+En un problema **no supervisado** no hay target ni split: el objetivo es describir la estructura de *todos* los datos.
+
+- **Escalado** (`StandardScaler`): imprescindible acá, porque tanto K-Means como Isolation Forest se basan en **distancias**; sin escalar, las variables de mayor magnitud dominan artificialmente.
+- **Encoding** de categóricas a binarias para que entren en el cálculo de distancias.
+- Todo se ajusta sobre el conjunto completo (no hay fuga posible porque no hay test que predecir)."""
+
+_EXPL_MODEL = {
+"clasificacion": """### 🧠 Qué modelos y por qué
+
+Comparo dos enfoques deliberadamente distintos:
+
+1. **Regresión logística** — *baseline* lineal, interpretable y veloz. Si un modelo simple ya rinde, no hace falta complejidad.
+2. **Random Forest** — *ensemble* de árboles: captura no linealidades e interacciones, robusto a outliers y a la escala.
+
+**Hiperparámetros** (defaults sensatos, no un tuning exhaustivo — ese es el paso siguiente): `max_iter=1000` asegura convergencia de la logística; `n_estimators=300` da una estimación estable del bosque (con rendimientos decrecientes); `random_state=42` para reproducibilidad.
+
+**Validación cruzada 5-fold estratificada:** en vez de un único split, promediamos 5 particiones → estimación más confiable y con su desvío. La métrica es **ROC-AUC** (binaria) o **F1-macro** (multiclase), no accuracy, porque toleran el desbalance.""",
+"regresion": """### 🧠 Qué modelos y por qué
+
+1. **Regresión lineal** — *baseline* interpretable: asume relación lineal entre features y target.
+2. **Random Forest Regressor** — *ensemble* que captura no linealidades e interacciones sin que tengamos que especificarlas.
+
+**Hiperparámetros**: defaults sensatos (`n_estimators=300`, `random_state=42`), sin tuning todavía. **Validación cruzada 5-fold** con **R²** como métrica: una estimación promediada del poder explicativo, más confiable que un único split.""",
+"deep": """### 🧠 Por qué una red neuronal acá
+
+1. **Regresión logística** — *baseline* lineal, para tener una vara honesta.
+2. **MLP (perceptrón multicapa)** — red neuronal con capas ocultas `(64, 32)`: aprende representaciones no lineales de los datos tabulares.
+
+**Decisiones de la red**: `early_stopping=True` corta el entrenamiento cuando la validación deja de mejorar (evita sobreajuste); `max_iter=400` es el techo de épocas; las capas `(64,32)` son una arquitectura modesta acorde al tamaño del dataset (redes grandes sobreajustan en pocos datos). Se compara contra el baseline con **validación cruzada** — una red solo se justifica si **supera** al modelo simple.""",
+"clustering": """### 🧠 Por qué K-Means y cómo elegir *k*
+
+**K-Means** agrupa minimizando la distancia de cada punto a su centroide. Es rápido e interpretable, ideal como primer mapeo de la estructura.
+
+Como *k* (cantidad de grupos) no se conoce de antemano, lo elegimos con dos criterios:
+- **Método del codo (inercia)**: se busca el quiebre donde sumar clusters deja de reducir mucho la inercia.
+- **Coeficiente de silueta**: mide cohesión vs. separación; elegimos el *k* que lo maximiza.""",
+"anomalia": """### 🧠 Por qué Isolation Forest
+
+**Isolation Forest** aísla observaciones particionando al azar: los puntos que quedan aislados con **pocas** particiones son los más atípicos. Escala bien, no asume distribución y funciona en alta dimensión.
+
+`contamination='auto'` deja que el algoritmo estime la proporción de anomalías. Si conocés la tasa real (p. ej. 1% de fraudes), conviene fijarla explícitamente.""",
+}
+
+_EXPL_EVAL = {
+"clasificacion": """### 📊 Cómo interpretar estas métricas
+
+- **Matriz de confusión**: la diagonal son aciertos; fuera de ella, errores. Importa *qué* clase se confunde con cuál.
+- **Precision** (de lo que predije positivo, cuánto acerté) vs **Recall** (de los positivos reales, cuántos capturé): hay *trade-off*. **F1** los combina; **F1-macro** promedia por clase sin que la mayoritaria domine.
+- **ROC-AUC** (binaria): probabilidad de rankear un positivo por encima de un negativo. 0.5 = azar, 1.0 = perfecto; robusta al desbalance.
+
+**Qué inferir**: si el modelo supera al baseline y el *recall* de la clase de interés es aceptable, hay señal real. Si baseline ≈ ensemble, el problema es mayormente lineal. **Limitación**: hiperparámetros sin tunear → con `GridSearchCV` y *feature engineering* del dominio se puede mejorar.""",
+"regresion": """### 📊 Cómo interpretar estas métricas
+
+- **R²**: proporción de varianza explicada (1 = perfecto; 0 = no mejor que predecir la media; negativo = peor que la media).
+- **MAE**: error absoluto medio, en las **unidades del target** (lectura directa).
+- **RMSE**: penaliza más los errores grandes; si **RMSE ≫ MAE**, hay outliers con error alto.
+- **Predicho vs. real**: los puntos deberían alinearse sobre la diagonal; desvíos sistemáticos = sesgo del modelo.
+
+**Limitación**: sin tuning; probar regularización (Ridge/Lasso) y *feature engineering*.""",
+"clustering": """### 📊 Cómo interpretar el clustering
+
+- **Codo / silueta**: ya guiaron la elección de *k*. Silueta cercana a 1 = grupos compactos y separados; cerca de 0 = solapados.
+- **PCA 2D**: es una *proyección* para visualizar, no la separación real en alta dimensión — grupos que se ven solapados pueden estar separados en más dimensiones.
+- **Qué inferir**: caracterizá cada cluster mirando las **medias de las variables por grupo** (perfiles).
+
+**Limitación**: K-Means asume grupos esféricos y de tamaño similar; para formas complejas conviene DBSCAN o Gaussian Mixtures.""",
+"anomalia": """### 📊 Cómo interpretar las anomalías
+
+- El **score** (`decision_function`) ordena de más a menos atípico; el histograma muestra dónde está la cola de los anómalos.
+- Sin *ground truth*, la validación es **cualitativa**: revisá si los puntos marcados tienen sentido de negocio.
+- En la **proyección PCA 2D**, las anomalías suelen caer en los bordes de la nube de puntos.
+
+**Limitación**: `contamination='auto'` estima la proporción; con conocimiento del dominio conviene fijar la tasa esperada.""",
+}
+_EXPL_EVAL["deep"] = _EXPL_EVAL["clasificacion"]
