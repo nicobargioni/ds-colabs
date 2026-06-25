@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 """
-nbgen — fábrica de notebooks de Data Science con estética y rigor estilo TP2.
+nbgen — fábrica de notebooks de Data Science (estética editorial oscura + rigor).
 
-Genera un .ipynb ejecutable top-down en Google Colab a partir de un `spec`:
-portada HTML (IPython.display) + bloque académico + secciones numeradas
-(Setup → Carga → EDA exhaustivo → Preprocesamiento → Modelado → Evaluación →
-Conclusiones). Comentado en español, random_state=42, sin data leakage.
+Clona el sistema visual de la entrega del usuario (tools/style.py · EDU_CSS):
+portada cinematográfica, secciones de vidrio, KPIs, callouts y tablas. Para que
+los notebooks NO sean todos iguales, cada uno aplica un `hue-rotate` propio
+(misma estructura, distinta familia de color). Las celdas que solo contienen
+HTML/CSS van detrás de `#@title` (Colab oculta el código y muestra el render).
 
-Estética (firma visual, coherente con nicolasbargioni.com):
-  cian #0891b2 + coral #f0521f, Space Grotesk (display) + Inter (texto),
-  con una "ficha técnica" en la portada como elemento distintivo.
-
-Uso:
-  from nbgen import build, write
-  write(spec, "data-ml/eda/01-...ipynb")
+Estructura: Portada → Marco → Setup → Carga → EDA exhaustivo →
+Preprocesamiento (sin leakage) → Modelado → Evaluación → Conclusiones.
+random_state=42, comentado en español.
 """
 from __future__ import annotations
 import json
@@ -22,150 +19,150 @@ import html as _html
 import nbformat
 from nbformat.v4 import new_notebook, new_markdown_cell, new_code_cell
 
-# ── Tokens de diseño ──────────────────────────────────────────────────────
-CYAN = "#0891b2"
-CORAL = "#f0521f"
-INK = "#0f172a"
-MUTE = "#64748b"
-LINE = "#e2e8f0"
-FONTS = ("@import url('https://fonts.googleapis.com/css2?"
-         "family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap');")
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from style import EDU_CSS  # noqa: E402
+
+# Familias de color (hue-rotate en grados, saturación). Variedad entre notebooks.
+HUES = [(0, 1.0), (28, 1.05), (62, 1.0), (118, 0.95), (165, 1.0),
+        (205, 1.05), (255, 1.0), (300, 1.05), (330, 1.0)]
 
 
-# ── Portada y bloques HTML (render vía display(HTML(...))) ─────────────────
-def _cover_html(s: dict) -> str:
-    chips = "".join(
-        f'<div style="border:1px solid {LINE};border-radius:10px;padding:12px 14px;">'
-        f'<div style="font:600 10px/1 Inter,sans-serif;letter-spacing:.14em;'
-        f'text-transform:uppercase;color:{CORAL};margin-bottom:6px;">{_html.escape(k)}</div>'
-        f'<div style="font:500 14px/1.3 Inter,sans-serif;color:{INK};">{_html.escape(v)}</div></div>'
-        for k, v in s["ficha"].items()
+def _hue(seed: str):
+    return HUES[sum(map(ord, seed)) % len(HUES)]
+
+
+def _wrap(inner: str, seed: str) -> str:
+    deg, sat = _hue(seed)
+    return f'<div style="filter:hue-rotate({deg}deg) saturate({sat});">{inner}</div>'
+
+
+def _esc(s) -> str:
+    return _html.escape(str(s))
+
+
+# ── Portada cinematográfica ────────────────────────────────────────────────
+def _portada(s: dict) -> str:
+    cat = s["categoria"]
+    vlabels = s.get("vlabels") or list(s["ficha"].values())[:3]
+    vl = "".join(f"<span>{_esc(x)}</span>" for x in vlabels[:3])
+    hi = s.get("highlights") or [
+        ("Objetivo", s["objetivo"], "Meta"),
+        ("Hipótesis", s["hipotesis"], "A validar"),
+        ("Datos", s["datos_desc"], s["ficha"].get("Dataset", "Dataset")),
+    ]
+    cards = "".join(
+        f'<article class="edu-glass"><h4>{_esc(h)}</h4><p>{_esc(p)}</p>'
+        f'<div class="edu-glass-foot"><span class="edu-metric">{_esc(m)}</span>'
+        f'<a>Ver análisis &rarr;</a></div></article>'
+        for h, p, m in hi[:3]
     )
-    return f"""<div style="font-family:Inter,system-ui,sans-serif;max-width:860px;margin:0 auto;">
-<style>{FONTS}</style>
-<div style="border-left:6px solid {CYAN};padding:6px 0 6px 22px;margin-bottom:26px;">
-  <div style="font:600 11px/1 Inter,sans-serif;letter-spacing:.22em;text-transform:uppercase;color:{CYAN};margin-bottom:12px;">
-    {_html.escape(s['categoria'])} · {_html.escape(s['subtema'])}
+    fuentes = s.get("fuentes") or ["Kaggle", "Hugging Face", "scikit-learn", "Google Colab"]
+    logos = "".join(f"<span>{_esc(x)}</span>" for x in fuentes)
+    meta = {
+        "Autor": "Nicolás Bargioni",
+        "Rol": "Data Scientist",
+        "Categoría": cat,
+        "Dataset": s["ficha"].get("Dataset", "—"),
+    }
+    metas = "".join(
+        f'<div><span class="k">{_esc(k)}</span><span class="v">{_esc(v)}</span></div>'
+        for k, v in meta.items()
+    )
+    acento = f'<em>{_esc(s["acento"])}</em>' if s.get("acento") else ""
+    return f"""<div class="edu-portada">
+  <div class="edu-cine">
+     <div class="edu-fog"></div><div class="edu-stars"></div><div class="edu-stars2"></div>
+     <span class="edu-comet"></span><span class="edu-comet edu-comet2"></span>
+     <svg class="edu-ridge" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="eduRg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#0d2034"/><stop offset="1" stop-color="#050b14"/></linearGradient></defs>
+        <path d="M0,200 L0,118 L130,72 L250,112 L380,52 L520,118 L660,58 L800,116 L940,46 L1070,104 L1200,64 L1200,200 Z" fill="url(#eduRg)"/>
+     </svg>
+     <div class="edu-grain"></div>
+     <header class="edu-nav"><div class="edu-logo">ds-colabs<span>· {_esc(cat)}</span></div></header>
+     <div class="edu-vlabels">{vl}</div>
+     <div class="edu-cine-grid"><div class="edu-cine-main">
+        <span class="edu-kicker">{_esc(cat)} · {_esc(s["subtema"])}</span>
+        <h1 class="edu-mega">{_esc(s["titulo"])}{acento}</h1>
+        <p class="edu-lede">{_esc(s["subtitulo"])}</p>
+        <a class="edu-cta" href="#">Explorar el análisis <span>&rarr;</span></a>
+     </div>
+     <aside class="edu-floats">{cards}</aside></div>
+     <div class="edu-logos"><span class="edu-logos-label">Fuentes</span>{logos}</div>
   </div>
-  <h1 style="font:700 34px/1.12 'Space Grotesk',sans-serif;color:{INK};margin:0 0 10px;">{_html.escape(s['titulo'])}</h1>
-  <p style="font:400 16px/1.5 Inter,sans-serif;color:{MUTE};margin:0;max-width:640px;">{_html.escape(s['subtitulo'])}</p>
-</div>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:22px;">{chips}</div>
-<div style="display:flex;align-items:center;gap:10px;color:{MUTE};font:500 13px/1 Inter,sans-serif;">
-  <span style="color:{INK};font-weight:600;">Nicolás Bargioni</span>
-  <span style="width:4px;height:4px;border-radius:50%;background:{CORAL};"></span>
-  <span>Data Scientist · nicolasbargioni.com</span>
-  <span style="margin-left:auto;font:600 11px/1 'Space Grotesk',monospace;color:{CYAN};">ds-colabs</span>
-</div></div>"""
+  <div class="edu-metastrip"><div class="edu-meta">{metas}</div></div>
+</div>"""
 
 
-def _block_html(title: str, items: list[tuple[str, str]]) -> str:
-    rows = "".join(
-        f'<div style="margin-bottom:16px;"><div style="font:600 11px/1 Inter,sans-serif;'
-        f'letter-spacing:.12em;text-transform:uppercase;color:{CORAL};margin-bottom:5px;">{_html.escape(h)}</div>'
-        f'<div style="font:400 15px/1.55 Inter,sans-serif;color:{INK};">{b}</div></div>'
-        for h, b in items
-    )
-    return f"""<div style="font-family:Inter,system-ui,sans-serif;max-width:860px;margin:0 auto;
-border:1px solid {LINE};border-radius:14px;padding:26px 30px;">
-<style>{FONTS}</style>
-<h2 style="font:700 20px/1.2 'Space Grotesk',sans-serif;color:{INK};margin:0 0 20px;">{_html.escape(title)}</h2>
-{rows}</div>"""
+def _marco(s: dict) -> str:
+    metrica = s["ficha"].get("Métrica", s.get("metrica", ""))
+    return f"""<div class="edu edu-sheet">
+  <span class="edu-eyebrow">Marco del trabajo</span>
+  <h2>1 · Objetivo</h2><p>{_esc(s["objetivo"])}</p>
+  <h2 class="alt">2 · Hipótesis</h2>
+  <div class="edu-note">{_esc(s["hipotesis"])}</div>
+  <h2>3 · Datos</h2><p>{_esc(s["datos_desc"])}</p>
+  <h2 class="alt">4 · Metodología</h2><p>{_esc(s["metodologia"])}</p>
+  <h2>5 · Métrica de evaluación</h2>
+  <div class="edu-ok">{_esc(metrica)}</div>
+  <div class="edu-foot">Notebook ejecutable top-down · <code>random_state=42</code> · preprocesamiento sin data leakage.</div>
+</div>"""
 
 
-def _conclusion_html(items: list[str]) -> str:
-    lis = "".join(
-        f'<li style="margin-bottom:10px;font:400 15px/1.55 Inter,sans-serif;color:{INK};">{b}</li>'
-        for b in items
-    )
-    return f"""<div style="font-family:Inter,system-ui,sans-serif;max-width:860px;margin:0 auto;
-border-left:6px solid {CORAL};padding:4px 0 4px 22px;">
-<style>{FONTS}</style>
-<div style="font:600 11px/1 Inter,sans-serif;letter-spacing:.2em;text-transform:uppercase;color:{CORAL};margin-bottom:10px;">Conclusiones</div>
-<ul style="margin:0;padding-left:18px;">{lis}</ul></div>"""
+def _concl(s: dict) -> str:
+    items = "".join(f"<li>{x}</li>" for x in s["conclusiones"])
+    return f"""<div class="edu edu-sheet">
+  <span class="edu-eyebrow">Conclusiones</span>
+  <h2>Hallazgos y próximos pasos</h2>
+  <ul>{items}</ul>
+  <div class="edu-foot">Nicolás Bargioni · Data Scientist · nicolasbargioni.com</div>
+</div>"""
 
 
-def _html_cell(builder_call: str) -> str:
-    """Genera el código de una celda que importa HTML y lo muestra."""
-    return f"from IPython.display import HTML, display\ndisplay(HTML({builder_call}))"
+def _html_cell(title: str, inner_html: str, with_css: bool, seed: str) -> str:
+    body = (EDU_CSS if with_css else "") + _wrap(inner_html, seed)
+    return (f"#@title {title}\nfrom IPython.display import HTML, display\n"
+            f"display(HTML(r'''{body}'''))")
 
 
 # ── Builder principal ──────────────────────────────────────────────────────
 def build(spec: dict) -> nbformat.NotebookNode:
     nb = new_notebook()
     c = nb.cells
-    P = spec["problema"]  # 'clasificacion' | 'regresion' | 'clustering'
-
-    # Portada y bloque académico se inyectan como datos serializados (robusto).
-    spec_json = json.dumps(spec, ensure_ascii=False)
+    P = spec["problema"]
+    seed = spec.get("titulo", "x")
+    T = spec.get("target", "")
 
     c.append(new_markdown_cell(
-        f"# {spec['titulo']}\n### {spec['subtitulo']}\n\n"
-        f"> **{spec['categoria']} · {spec['subtema']}** — notebook ejecutable top-down en Google Colab.\n"
-        f"> Comentado en español · `random_state=42` · sin data leakage (todo el preprocesamiento dentro de `Pipeline`)."
-    ))
+        f"# {spec['titulo']}\n*{spec['subtema']} · {spec['categoria']}*"))
+    # Portada (HTML detrás de #@title; inyecta el CSS una vez)
+    c.append(new_code_cell(_html_cell("📌 Portada", _portada(spec), True, seed)))
+    c.append(new_code_cell(_html_cell("🧭 Marco del trabajo", _marco(spec), False, seed)))
 
-    # Celda 1: portada HTML
-    c.append(new_code_cell(
-        "# Portada (IPython.display.HTML)\n"
-        "from IPython.display import HTML, display\n"
-        f"SPEC = {spec_json}\n"
-        f"{_COVER_FN}\n"
-        "display(HTML(_cover_html(SPEC)))"
-    ))
-
-    # Celda 2: bloque académico
-    c.append(new_code_cell(
-        f"{_BLOCK_FN}\n"
-        "display(HTML(_block_html('Marco del trabajo', [\n"
-        f"    ('Objetivo', {json.dumps(spec['objetivo'], ensure_ascii=False)}),\n"
-        f"    ('Hipótesis', {json.dumps(spec['hipotesis'], ensure_ascii=False)}),\n"
-        f"    ('Datos', {json.dumps(spec['datos_desc'], ensure_ascii=False)}),\n"
-        f"    ('Metodología', {json.dumps(spec['metodologia'], ensure_ascii=False)}),\n"
-        f"    ('Métrica', {json.dumps(spec['metrica'], ensure_ascii=False)}),\n"
-        "])))"
-    ))
-
-    c.append(new_markdown_cell("---\n## 0 · Setup — dependencias, imports y configuración global"))
+    c.append(new_markdown_cell("## 0 · Setup"))
     c.append(new_code_cell(_SETUP))
     c.append(new_markdown_cell("## 1 · Carga de datos"))
     c.append(new_code_cell(spec["loader_code"]))
     c.append(new_code_cell(_LOAD_CHECK))
-
     c.append(new_markdown_cell(
-        "## 2 · Análisis exploratorio (EDA)\n"
-        "EDA exhaustivo **antes** de tocar el modelo: forma, tipos, faltantes, "
-        "distribuciones, cardinalidad, correlaciones, outliers y relación con el target."
-    ))
-    c.append(new_code_cell(_EDA_OVERVIEW))
-    c.append(new_code_cell(_EDA_MISSING))
-    c.append(new_code_cell(_EDA_TARGET.replace("__TARGET__", spec.get("target", "")).replace("__P__", P)))
-    c.append(new_code_cell(_EDA_NUMERIC))
-    c.append(new_code_cell(_EDA_CATEGORICAL))
-    c.append(new_code_cell(_EDA_CORR))
-    c.append(new_code_cell(_EDA_OUTLIERS))
-
+        "## 2 · Análisis exploratorio (EDA)\nForma, tipos, faltantes, distribuciones, "
+        "cardinalidad, correlaciones, outliers y relación con el target."))
+    for cell in (_EDA_OVERVIEW, _EDA_MISSING,
+                 _EDA_TARGET.replace("__TARGET__", T).replace("__P__", P),
+                 _EDA_NUMERIC, _EDA_CATEGORICAL, _EDA_CORR, _EDA_OUTLIERS):
+        c.append(new_code_cell(cell))
     c.append(new_markdown_cell(
-        "## 3 · Preprocesamiento\n"
-        "Split **antes** de transformar (evita leakage). Imputación + escalado + encoding "
-        "encapsulados en `ColumnTransformer`/`Pipeline`, ajustados **solo con train**."
-    ))
-    c.append(new_code_cell(_SPLIT.replace("__TARGET__", spec.get("target", "")).replace("__P__", P)))
+        "## 3 · Preprocesamiento\nSplit antes de transformar; imputación + escalado + "
+        "encoding dentro de `Pipeline` (se ajustan solo con train → sin leakage)."))
+    c.append(new_code_cell(_SPLIT.replace("__TARGET__", T).replace("__P__", P)))
     c.append(new_code_cell(_PREPROCESS))
-
     c.append(new_markdown_cell("## 4 · Modelado"))
     c.append(new_code_cell(_MODEL.get(P, _MODEL["clasificacion"])))
-
     c.append(new_markdown_cell("## 5 · Evaluación"))
     c.append(new_code_cell(_EVAL.get(P, _EVAL["clasificacion"])))
-
-    c.append(new_markdown_cell("## 6 · Conclusiones"))
-    c.append(new_code_cell(
-        f"{_CONCL_FN}\n"
-        "display(HTML(_conclusion_html([\n"
-        + "".join(f"    {json.dumps(x, ensure_ascii=False)},\n" for x in spec["conclusiones"])
-        + "])))"
-    ))
+    # Conclusiones (HTML detrás de #@title)
+    c.append(new_code_cell(_html_cell("✅ Conclusiones", _concl(spec), False, seed)))
 
     nb["metadata"] = {
         "colab": {"provenance": [], "toc_visible": True},
@@ -206,7 +203,7 @@ sns.set_theme(style='whitegrid'); plt.rcParams['figure.dpi'] = 110
 PRIMARY, ACCENT = '#0891b2', '#f0521f'
 print('Setup OK · numpy', np.__version__, '· pandas', pd.__version__)"""
 
-_LOAD_CHECK = """# Vista rápida de la tabla cargada (el loader debe dejar un DataFrame `df`)
+_LOAD_CHECK = """# Vista rápida (el loader debe dejar un DataFrame `df`)
 assert 'df' in globals(), 'El loader debe definir un DataFrame llamado df'
 df = df.copy()
 print('Filas × columnas:', df.shape)
@@ -366,10 +363,3 @@ lims = [min(y_test.min(), y_pred.min()), max(y_test.max(), y_pred.max())]
 plt.plot(lims, lims, '--', color=ACCENT); plt.xlabel('real'); plt.ylabel('predicho')
 plt.title('Predicho vs. real'); plt.tight_layout(); plt.show()""",
 }
-
-# Las funciones HTML se serializan como texto para inyectarlas en el notebook
-# (así el notebook es autocontenido y no depende de nbgen en Colab).
-import inspect  # noqa: E402
-_COVER_FN = inspect.getsource(_cover_html) + f"\nCYAN={CYAN!r};CORAL={CORAL!r};INK={INK!r};MUTE={MUTE!r};LINE={LINE!r};FONTS={FONTS!r}\nimport html as _html"
-_BLOCK_FN = inspect.getsource(_block_html)
-_CONCL_FN = inspect.getsource(_conclusion_html)
