@@ -95,32 +95,30 @@ def _portada(s: dict) -> str:
 </div>"""
 
 
-def _banner(n: int, title: str, lede: str) -> str:
-    return (f'<div class="edu-banner"><span class="eb">Sección {n:02d}</span>'
-            f'<h2>{_esc(title)}</h2><p class="lede">{_esc(lede)}</p>'
-            f'<span class="step">{n}</span></div>')
+def _md_inline(x: str) -> str:
+    """Convierte <b>…</b> de los specs a **…** para celdas Markdown."""
+    return (str(x).replace("<b>", "**").replace("</b>", "**")
+            .replace("<i>", "_").replace("</i>", "_"))
 
 
-def _row(k: str, v: str, alt: bool = False) -> str:
-    return (f'<div class="row{" alt" if alt else ""}"><div class="k">{_esc(k)}</div>'
-            f'<div class="v">{_esc(v)}</div></div>')
-
-
-def _marco(s: dict) -> str:
+def _marco_md(s: dict) -> str:
     metrica = s["ficha"].get("Métrica", s.get("metrica", ""))
-    rows = (_row("Objetivo", s["objetivo"]) + _row("Hipótesis", s["hipotesis"], True)
-            + _row("Datos", s["datos_desc"]) + _row("Metodología", s["metodologia"], True)
-            + _row("Métrica", metrica))
-    return (f'<div class="edu-banner"><span class="eb">Marco del trabajo</span>'
-            f'<h2>Cómo abordo <em>el problema</em></h2>{rows}'
-            f'<div class="foot">Ejecutable top-down · <b>random_state=42</b> · preprocesamiento sin data leakage.</div></div>')
+    return (
+        "## 🧭 Marco del trabajo\n\n"
+        "| | |\n|---|---|\n"
+        f"| **Objetivo** | {_md_inline(s['objetivo'])} |\n"
+        f"| **Hipótesis** | {_md_inline(s['hipotesis'])} |\n"
+        f"| **Datos** | {_md_inline(s['datos_desc'])} |\n"
+        f"| **Metodología** | {_md_inline(s['metodologia'])} |\n"
+        f"| **Métrica** | {_md_inline(metrica)} |\n\n"
+        "> Ejecutable top-down · `random_state=42` · preprocesamiento **sin data leakage**."
+    )
 
 
-def _concl(s: dict) -> str:
-    items = "".join(f"<li>{x}</li>" for x in s["conclusiones"])
-    return (f'<div class="edu-banner"><span class="eb">Conclusiones</span>'
-            f'<h2>Hallazgos y <em>próximos pasos</em></h2><ul>{items}</ul>'
-            f'<div class="foot">Nicolás Bargioni · Data Scientist · nicolasbargioni.com</div></div>')
+def _concl_md(s: dict) -> str:
+    items = "\n".join(f"- {_md_inline(x)}" for x in s["conclusiones"])
+    return (f"## ✅ Conclusiones\n\n{items}\n\n"
+            "---\n*Nicolás Bargioni · Data Scientist · [nicolasbargioni.com](https://nicolasbargioni.com)*")
 
 
 def _html_cell(title: str, inner_html: str, with_css: bool, seed: str) -> str:
@@ -139,34 +137,34 @@ def build(spec: dict) -> nbformat.NotebookNode:
 
     c.append(new_markdown_cell(
         f"# {spec['titulo']}\n*{spec['subtema']} · {spec['categoria']}*"))
-    # Portada (HTML detrás de #@title; inyecta el CSS una vez)
+    # Portada hero (HTML autocontenido detrás de #@title — único bloque HTML)
     c.append(new_code_cell(_html_cell("📌 Portada", _portada(spec), True, seed)))
-    c.append(new_code_cell(_html_cell("🧭 Marco del trabajo", _marco(spec), False, seed)))
+    # El resto en Markdown bien formateado (confiable en Colab + alimenta el índice)
+    c.append(new_markdown_cell(_marco_md(spec)))
 
-    def banner(n, title, lede, emoji):
-        c.append(new_code_cell(_html_cell(f"{emoji} {title}", _banner(n, title, lede), False, seed)))
+    def section(n, emoji, title, lede):
+        c.append(new_markdown_cell(f"## {emoji} {n} · {title}\n\n{lede}"))
 
-    banner(0, "Setup", "Dependencias, imports y configuración global (reproducibilidad).", "🛠")
+    section(0, "🛠", "Setup", "Dependencias, imports y configuración global (reproducibilidad).")
     c.append(new_code_cell(_SETUP))
-    banner(1, "Carga de datos", "Lectura del dataset y vista inicial de la tabla.", "📥")
+    section(1, "📥", "Carga de datos", "Lectura del dataset y vista inicial de la tabla.")
     c.append(new_code_cell(spec["loader_code"]))
     c.append(new_code_cell(_LOAD_CHECK))
-    banner(2, "Análisis exploratorio (EDA)",
-           "Forma, tipos, faltantes, distribuciones, cardinalidad, correlaciones, outliers y relación con el target.", "🔍")
+    section(2, "🔍", "Análisis exploratorio (EDA)",
+            "Forma, tipos, faltantes, distribuciones, cardinalidad, correlaciones, outliers y relación con el target.")
     for cell in (_EDA_OVERVIEW, _EDA_MISSING,
                  _EDA_TARGET.replace("__TARGET__", T).replace("__P__", P),
                  _EDA_NUMERIC, _EDA_CATEGORICAL, _EDA_CORR, _EDA_OUTLIERS):
         c.append(new_code_cell(cell))
-    banner(3, "Preprocesamiento",
-           "Split antes de transformar; imputación, escalado y encoding dentro de un Pipeline (ajustado solo con train → sin leakage).", "🧪")
+    section(3, "🧪", "Preprocesamiento",
+            "Split antes de transformar; imputación, escalado y encoding dentro de un `Pipeline` (ajustado solo con train → sin leakage).")
     c.append(new_code_cell(_SPLIT.replace("__TARGET__", T).replace("__P__", P)))
     c.append(new_code_cell(_PREPROCESS))
-    banner(4, "Modelado", "Baseline interpretable vs. ensemble, comparados con validación cruzada.", "🧠")
+    section(4, "🧠", "Modelado", "Baseline interpretable vs. ensemble, comparados con validación cruzada.")
     c.append(new_code_cell(_MODEL.get(P, _MODEL["clasificacion"])))
-    banner(5, "Evaluación", "Desempeño sobre datos nunca vistos (set de test).", "📊")
+    section(5, "📊", "Evaluación", "Desempeño sobre datos nunca vistos (set de test).")
     c.append(new_code_cell(_EVAL.get(P, _EVAL["clasificacion"])))
-    # Conclusiones (HTML detrás de #@title)
-    c.append(new_code_cell(_html_cell("✅ Conclusiones", _concl(spec), False, seed)))
+    c.append(new_markdown_cell(_concl_md(spec)))
 
     nb["metadata"] = {
         "colab": {"provenance": [], "toc_visible": True},
